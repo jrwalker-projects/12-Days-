@@ -1,0 +1,65 @@
+---
+title: "12 Days of Christmas and the PNC Price Index"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r, echo=FALSE}
+library(tidyverse); library(V8); library(rvest); library(httr); library(purrr); library(stringi); library(ggthemes)
+```
+
+```{r, eval=FALSE}
+pricetxt <- "pnc12daysindex2017.txt"
+pricet <- readLines(pricetxt)
+```
+
+```{r getjs, eval=FALSE}
+res <- GET("https://www.pnc.com/content/dam/pnc-com/code_assets/cpi/cpi-chart-data.js")
+saveRDS(res, "res.rds")
+```
+
+```{r}
+res <- readRDS("res.rds")
+```
+
+```{r}
+ct <- v8() #create a context
+ct$eval(content(res, as="text", encoding="UTF-8"))
+str(data_init <- ct$get("dataInit"))
+str(data_group <- ct$get("dataGroup"))
+```
+
+```{r}
+annual_item_costs <- set_names(data_group$data, data_group$label) %>%
+  bind_cols() %>%
+  mutate(year = data_init$labels) %>%
+  gather(item_display_name, cost, -year) %>%
+  mutate(item = tolower(gsub("-", " ", item_display_name, fixed=TRUE))) %>%
+  mutate(category = case_when(
+    stri_detect_regex(item, "(bird|hen|geese|part|swan|dove)") ~ "Birds",
+    stri_detect_regex(item, "(lord|drummer|ladies|piper|maid)") ~ "People",
+    TRUE ~ "Things"))
+```
+
+
+```{r}
+colrs <- c("#b40003", "#34502B", "#FFEFB9")
+mutate(annual_item_costs, item_display_name = factor(item_display_name, unique(item_display_name))) %>%
+  mutate(year = as.Date(sprintf("%s-12-25", year))) %>%
+  filter(item_display_name != "All Gifts") %>%
+  ggplot(aes(year, cost, color=category, fill=category)) +
+    geom_area(alpha=2/3) + 
+    geom_point(size=0.1) +
+    scale_x_date(expand=c(0,0)) +
+    scale_y_continuous(label=scales::dollar) +
+    scale_color_manual(values=colrs, guide=FALSE) +
+    scale_fill_manual(values=colrs, guide=FALSE) +
+    facet_wrap(~item_display_name, scales="free") +
+    labs(x=NULL, y="Item cost",
+       title="The PNC Christmas Price Index Through the Years",
+       subtitle="Attempting to adjust for inflation - Note free-Y scales",
+       caption="Source: https://www.pnc.com/en/about-pnc/topics/pnc-christmas-price-index.html") +
+    theme_economist(base_size = 7)
+```
+
